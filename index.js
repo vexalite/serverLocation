@@ -19,20 +19,21 @@ redisClient.on('error', (err) => {
 app.use(bodyParser.json());
 
 // Endpoint for receiving location data from devices
-app.post('/api/location', async (req, res) => {
+app.post('/api/location/:id', async (req, res) => {
   try {
-    const { device, latitude, longitude } = req.body;
-
+    const { device, latitude, longitude, driverName, busNumber } = req.body;
     // Save location data to Redis stream
     const locationData = {
       device,
       latitude,
       longitude,
       timestamp: new Date(),
+      driverName,
+      busNumber
     };
-
+  const bus = req.params.id
     // Use the xadd method to add data to a Redis stream
-    await redisClient.xadd('locationStream', '*', 'location', JSON.stringify(locationData));
+    await redisClient.xadd('locationStream', '*', 'bus', JSON.stringify(locationData));
 
     res.status(201).json({ message: 'Location data received and saved.' });
   } catch (error) {
@@ -41,16 +42,26 @@ app.post('/api/location', async (req, res) => {
   }
 });
 
+
 // API endpoint to query location data based on criteria (e.g., time range)
-app.get('/api/location', async (req, res) => {
+app.get('/api/location/:id', async (req, res) => {
   try {
     // Implement your query logic here (e.g., filtering by device, time range, etc.)
-
+    const busNum = req.params.id
+    console.log(busNum)
     // Use the xrange method to fetch data from the Redis stream
-    const locationData = await redisClient.xrange('locationStream', '-', '+');
+    // const locationData = await redisClient.xrange('locationStream', '-', '+');
+    const response = await redisClient.xread('STREAMS', 'locationStream', '$', 'FIELDS', 'busNum');
+
 
     // Extract the actual data from the stream response
-    const extractedData = locationData.map(([messageId, message]) => JSON.parse(message[1]));
+    // const extractedData = locationData.map(([messageId, message]) => JSON.parse(message[1]));
+    const extractedData = response.map(([stream, messages]) => {
+      return messages.map(([messageId, message]) => ({
+        messageId,
+        bus: JSON.parse(message.bus),
+      }));
+    });
 
     res.status(200).json(extractedData);
   } catch (error) {
